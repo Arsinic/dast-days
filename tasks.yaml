@@ -1,6 +1,75 @@
+variables:
+  - name: DOMAIN
+    default: "uds.dev"
+  - name: GREEN
+    default: "\\033[0;32m"
+  - name RED:
+    default: "\\033[0;31m"
+  - name: YELLOW
+    default: "\\033[0;33m"
+  - name: BLUE
+    default: "\\033[0;34m"
+  - name: MAGENTA
+    default: "\\033[0;35m"
+  - name: CYAN
+    default: "\\033[0;36m"
+  - name: RESET
+    default: "\\033[0m"  # Reset color
+  - name: APP_NAME
+    default: "podinfo"
 
 includes:
-  - create: ./tasks/create.yaml
+  - setup: ./tasks/setup.yaml
   - deploy: ./tasks/deploy.yaml
   - scan: ./tasks/dast-scan.yaml
-  
+
+tasks:
+
+  - name: dast-scan
+    description: "Can run the owasp-zap DAST scan on an app deployed into uds"
+    actions:
+      - definition: " build the dast image from dockerfile"
+        task: setup:build-dast-container
+      
+      - name: validate-uds-core
+        description: "Validate the UDS Core bundle"
+        cmd: |
+          if [[ $(zarf tools kubectl get pods -n uds-dev-stack --no-headers | wc -l) -eq 6 && \
+          $(zarf tools kubectl get pods -n pepr-system --no-headers | wc -l) -eq 3 ]]; then
+            echo "UDS Core is running"
+          else
+            echo "UDS Core is not running"
+            echo "Installing "
+            uds deploy k3d-core-slim-dev:0.25.2 --confirm
+          fi
+
+      #  - name: install-uds-slim-dev
+      #    description: "Install the UDS Slim Dev bundle"
+      #    cmd: |
+      #         uds run test-uds-core || uds deploy k3d-core-slim-dev:0.25.2 --confirm
+      #         uds deploy k3d-core-slim-dev:0.25.2 --confirm
+      
+      - name: install-app
+        description: "Install the $APP_NAME app"
+        cmd: |
+          echo "Installing the $APP_NAME app"
+          uds zarf package deploy packages/podinfo/zarf-package-podinfo-arm64-6.3.5.tar.zst --confirm --no-progress
+
+      # - name: get-scan-endpoint
+      #   description: "Get the scan endpoint from the podinfo app Package"
+      #   cmd: | 
+          
+      #     echo "endpoint for dast scan: $GREEN $SCAN_ENDPOINT $RESET"
+      - name : scan-run-dast
+        description: "Run the OWASP ZAP DAST scan"
+        cmd: |
+          echo "Getting the scan endpoint"
+
+          APP_NAME=$(kubectl get packages -n podinfo -o json | jq -r '.items[0].metadata.name') 
+          SCAN_ENDPOINT="$APP_NAME.$DOMAIN"
+          
+          echo "$BLUE Running DAST scan $RESET"
+
+          echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+          docker run --privileged --rm --name ephem-dind ephem-dind:latest sleep 10 && docker run --network="host" -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r report.html -J report.json && sleep 5
+          echo "DAST scan complete"

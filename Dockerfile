@@ -7,12 +7,6 @@ FROM docker:dind
 # Install Git
 RUN apk add --no-cache git bash jq unzip wget
 
-# renovate: datasource=github-releases depName=defenseunicorns/zarf versioning=semver registryUrl=https://github.com
-ENV ZARF_VERSION="v0.36.1"
-ENV ZARF_URL="https://github.com/defenseunicorns/zarf/releases/download/${ZARF_VERSION}/zarf_${ZARF_VERSION}_Linux_amd64"
-
-RUN wget ${ZARF_URL} -q --tries=3 -O /usr/local/bin/zarf 
-
 # renovate: datasource=github-releases depName=defenseunicorns/uds-cli versioning=semver registryUrl=https://github.com
 ENV UDS_CLI_VERSION="v0.13.1"
 ENV UDS_CLI_URL="https://github.com/defenseunicorns/uds-cli/releases/download/${UDS_CLI_VERSION}/uds-cli_${UDS_CLI_VERSION}_Linux_amd64"
@@ -34,14 +28,11 @@ ENV K3D_URL1="https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d
 RUN wget ${K3D_URL1} -q --tries=3 -O /usr/local/bin/k3d
 
 
-RUN chmod +x /usr/local/bin/zarf  && \
-    chmod +x /usr/local/bin/uds && \
+RUN chmod +x /usr/local/bin/uds && \
     chmod +x /usr/local/bin/yq && \
     chmod +x /usr/local/bin/k3d 
 
-RUN zarf version && \
-    echo "Zarf is installed" && \
-    uds version && \
+RUN uds version && \
     echo "UDS CLI is installed" && \
     yq --version && \
     echo "YQ is installed" && \

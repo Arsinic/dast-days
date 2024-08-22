@@ -1,0 +1,7 @@
+tasks:
+  - name: build-dast-container
+    description: "Build the DAST container"
+    actions:
+      - description: "Build the DAST container"
+        cmd: |
+          docker build -t ephem-dind:latest .
