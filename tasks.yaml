@@ -1,0 +1,6 @@
+
+includes:
+  - create: ./tasks/create.yaml
+  - deploy: ./tasks/deploy.yaml
+  - scan: ./tasks/dast-scan.yaml
+  

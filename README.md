@@ -28,16 +28,17 @@ From nothing,
 ### DAST Task
 
 
-`docker run --privileged -it --rm --name ephem-dind ephem-dind:latest sleep 10 && docker run --network="host" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev`
+`docker run --privileged -it --rm --name ephem-dind ephemeral-dast:latest sleep 10 && docker run --network="host" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev`
 
-
+Get results from the dind container by mounting local volume:
+`docker run --privileged -it --rm --name ephem-dind ephem-dind:latest sleep 10 && docker run --network="host" -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev -r report.html`
 
 <details> <summary>Click to expand old notes</summary>
 
 # DAST via Docker in docker locally
 
 ## Magical command TLDR
-`docker run --privileged -it --rm --name ephem-dind ephem-dind:latest sleep 10 && docker run --network="host" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev`
+`docker run --privileged -it --rm --name ephem-dind ephemeral-dast:latest sleep 10 && docker run --network="host" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev`
 
 ## Deploy podinfo
 Using the [podinfo repo](https://gitlab.devops.nswccd.navy.mil/project-blue/certificate-to-ship/example-projects/podinfo.git) `@feature/dast-scan`
@@ -52,7 +53,7 @@ Apparently not detaching the docker run for the `dind` image doesn't fully let d
 
 To avoid having to run a `-d` detached image you can just sleep the dind container run and then you wont have to `docker kill <image-id>` the detached container and `docker rmi <your-image>`
 
-```docker run --privileged -it --rm --name ephem-dind ephem-dind:latest sleep 30 && /bin/sh 
+```docker run --privileged -it --rm --name ephem-dind ephemeral-dast:latest sleep 30 && /bin/sh 
 
 </details>
 
