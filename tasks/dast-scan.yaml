@@ -1,15 +1,13 @@
-
 tasks:
-  - name: dast-scan
+
+  - name: run-dast
     description: "Can run the owasp-zap DAST scan on an app deployed into uds"
     actions:
-      - task: pepr-build
-
       - description: "Create the UDS Core Standard Zarf Package"
         cmd: |
-          `docker run --privileged -it --rm \
+          docker run --privileged -it --rm \
           --name ephem-dind ephem-dind:latest \
           sleep 10 && \
           docker run --network="host" -v $(pwd):/zap/wrk \
           -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
-          -t https://podinfo.uds.dev -r report.html`
+          -t https://podinfo.uds.dev -r report.html
