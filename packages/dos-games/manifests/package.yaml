@@ -1,0 +1,22 @@
+apiVersion: uds.dev/v1alpha1
+kind: Package
+metadata:
+  name: dos-games
+  namespace: dos-games
+spec:
+  network:
+    expose:
+      - service: game
+        podLabels:
+          app: game
+        host: game
+        gateway: tenant
+        port: 8000
+
+    allow:
+      - direction: Egress
+        selector:
+          app.kubernetes.io/name: game
+        remoteGenerated: Anywhere
+        port: 443
+---
