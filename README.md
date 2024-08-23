@@ -57,3 +57,30 @@ To avoid having to run a `-d` detached image you can just sleep the dind contain
 
 </details>
 
+
+
+
+
+
+
+Given: a zarf yaml and the desire to dast scan the app it will deploy
+When I run: `uds run dast-scan-package --set package_path=<path-to-pkg>`
+the UDS task will:
+  - [ ] verify that a uds cluster is initialized or not
+    - deploys `k3d-core-slim-dev:0.26.0` if not
+  - [ ] create my zarf package (if not an oci ref)
+  - [ ] deploy the package
+  - [ ] check if it exposes an end point
+  - [ ] dast scan the endpont(s)
+
+
+Given I want to dast scan any exposed endpoints on my cluster
+When I run `uds run dast-master`
+the UDS task will:
+  - verify that a uds cluster is initialized or not
+    - deploys `k3d-core-slim-dev:0.26.0` if not
+  - get list of all namespaces
+  - check for packages in all namespaces
+  - for list of packages get exposed endpoints
+  - for exposed end point DAST scan that B
+  - store dast results in `<package_name>.<app_name>.domain-report.html` and `<package_name>.<app_name>.domain-report.json`
