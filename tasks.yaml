@@ -103,10 +103,42 @@ tasks:
             
             echo "$BLUE Running DAST scan $RESET"
 
-            echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
-            docker run --network="host" -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $APP_ENDPOINT.report.html -J $APP_ENDPOINT.report.json && sleep 2
-            echo "DAST scan complete"
-          done
-
-
+  - name: dast-scan-everything
+    description: "Loop through packages, create package, install app, and run DAST scan"
+    actions:
+      - definition: "Loop through all packages and perform tasks"
+        cmd: |
+          # Get the list of namespaces
+          NAMESPACES=$(kubectl get namespaces -o json | jq -r '.items[].metadata.name')
           
+          for namespace in $NAMESPACES; do
+            echo "Processing namespace $namespace"
+            packages=$(kubectl get packages -n $namespace -o json | jq -r '.items[].metadata.name')
+
+            for package in $packages; do
+              echo "Processing package $package"
+              echo "Getting the scan endpoint"
+              APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
+              APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
+              
+              for APP_ENDPOINT in $APP_ENDPOINTS; do
+                echo "App endpoint: $APP_ENDPOINT"
+                if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+                  echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+                  exit 1
+                fi
+
+                SCAN_ENDPOINT="$APP_ENDPOINT"
+                
+                echo "$BLUE Running DAST scan $RESET"
+
+                echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+                docker run --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+                echo "DAST scan complete"
+
+                # Free up resources by deleting the container
+                echo "Cleaning up resources"
+                docker rm -f ephem-dast
+              done
+            done
+          done
