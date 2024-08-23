@@ -2,12 +2,110 @@ tasks:
 
   - name: run-dast
     description: "Can run the owasp-zap DAST scan on an app deployed into uds"
+    variables:
+      - name: package
+        description: "The name of the package"
+        required: true
     actions:
       - description: "Create the UDS Core Standard Zarf Package"
         cmd: |
-          docker run --privileged -it --rm \
-          --name ephem-dind ephem-dind:latest \
-          sleep 10 && \
-          docker run --network="host" -v $(pwd):/zap/wrk \
-          -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
-          -t https://podinfo.uds.dev -r report.html
+          # get the app name from the package CR
+          APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
+          echo "App name: $APP_NAME"
+          # get any possible endpoints from the package definition
+          APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
+          echo "APP_ENDPOINTS: $APP_ENDPOINTS"
+          #Apps like keycloak can expose more than one endpoint
+          for APP_ENDPOINT in $APP_ENDPOINTS; do
+            echo "App endpoint: $APP_ENDPOINT"
+            if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+              echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+              exit 1
+            fi
+
+            SCAN_ENDPOINT="$APP_ENDPOINT"
+            
+            echo "$BLUE Running DAST scan $RESET"
+
+            echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+            docker run --network="hosc" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+            echo "DAST scan complete"
+          done
+
+  - name: new-dast-scan
+    actions:
+      - task: get-app-name
+      - task: get-app-endpoints
+      - task: dast-scan
+      
+  - name: get-namespace
+    variables:
+      - name: ZARF_PKG_NS
+        required: true
+    description: get the zarf packages namespace
+    actions:
+      - cmd: kubectl get packages -n $ARF_PKG_NS -o json | jq -r '.items[0].metadata.namespace'
+        setVariables: 
+          - name: NAMESPACE
+      - cmd: echo $NAMESPACE
+
+  - name: get-namespaces
+    description: get all running namespaces
+    actions:
+      - cmd: echo $NAMESPACE
+      - cmd: kubectl get namespaces -o json | jq -r '.items[].metadata.name'
+        setVariables: 
+          - name: NAMESPACES
+
+  - name: get-app-name
+    variables:
+      - name: package
+        required: true
+    description: get the app name from the package CR
+    cmd: kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name'
+    setVariables:
+      - name: APP_NAME
+
+  - name: get-app-endpoints
+    variables:
+      - name: APP_NAME
+        required: true
+    description: get any possible endpoints from the package definition
+    cmd: kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]'
+    setVariables:
+      - name: APP_ENDPOINTS
+    mute: false
+
+  - name: scan-all-the-endpoints
+    variables: APP_ENDPOINTS
+    actions:
+      - cmd: echo "App name- $APP_NAME"
+        description: get any possible endpoints from the package definition
+      - cmd: | 
+          APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
+          echo "APP_ENDPOINTS: $APP_ENDPOINTS"
+          #Apps like keycloak can expose more than one endpoint
+            echo "App endpoint: $APP_ENDPOINT"
+            if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+              echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+              exit 1
+            fi
+          SCAN_ENDPOINT="$APP_ENDPOINT"
+      - cmd: echo $APP_ENDPOINT
+        setVariables:
+          - name: SCAN_ENDPOINT
+     # - task: dast-scan
+
+
+
+
+  - name: dast-scan
+    variables: 
+      - name: SCAN_ENDPOINT
+        required: true
+    description: run DAST scan with headleass OWASP ZAP container
+    actions:
+      - cmd: | 
+          echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+          docker run --network="host" --rm --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+          echo "DAST scan complete" &

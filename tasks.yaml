@@ -1,6 +1,6 @@
 variables:
-  - name: DOMAIN
-    default: "uds.dev"
+  - name: DOMAIN        #override this for you particular environment
+    default: "uds.dev"  # defaults to the uds-core-slim-dev local domain
   - name: GREEN
     default: "\\033[0;32m"
   - name RED:
@@ -15,8 +15,8 @@ variables:
     default: "\\033[0;36m"
   - name: RESET
     default: "\\033[0m"  # Reset color 
-  - name: APP_NAME
-    default: $(kubectl get pods -n podinfo -o json | jq -r '.items[0].metadata.labels.["app.kubernetes.io/name"]')
+  # - name: APP_NAME
+  #   default: $(kubectl get pods -n podinfo -o json | jq -r '.items[0].metadata.labels.["app.kubernetes.io/name"]')
   - name: ZARF_PKG_PATH
     default: "packages/$APP_NAME"
   - name: ZARF_PKG_ARCH
@@ -30,6 +30,30 @@ includes:
   - scan: ./tasks/dast-scan.yaml
 
 tasks:
+  - name: my-test
+    actions:
+      - task: scan:new-dast-scan
+
+  - name: scan-test
+    variables:
+      - name: pkg_path
+        description: "The file or directory path"
+        required: true
+    actions:
+      - description: "Determine if the path is a file, directory, or invalid"
+        cmd: |
+          echo "Checking if $pkg_path is a file or directory"
+          if [ -f "$pkg_path" ]; then
+            echo "$pkg_path is a file"
+            # uds run scan:file-task
+          elif [ -d "$pkg_path" ]; then
+            echo "$pkg_path is a directory"
+            # uds run scan:directory-task
+          else
+            echo "$pkg_path is not a valid file or directory"
+            exit 1
+          fi
+  
   - name: zarf-package-create
     description: "Create the packages in /packages"
     actions:
@@ -47,9 +71,6 @@ tasks:
 
   - name: dast-scan
     description: "Can run the owasp-zap DAST scan on an app deployed into uds"
-    interactiveVariables:
-      - name: APP_NAME
-        default: "podinfo"
     actions:
       - definition: " build the dast image from dockerfile"
         task: setup:build-dast-container
@@ -65,15 +86,16 @@ tasks:
           else
             echo "UDS Core is not running"
             echo "Installing "
-            uds deploy k3d-core-slim-dev:0.25.2 --confirm
+            uds deploy k3d-core-slim-dev:0.26.0 --confirm
           fi
-
-      #  - name: install-uds-slim-dev
-      #    description: "Install the UDS Slim Dev bundle"
-      #    cmd: |
-      #         uds run test-uds-core || uds deploy k3d-core-slim-dev:0.25.2 --confirm
-      #         uds deploy k3d-core-slim-dev:0.25.2 --confirm
       
+      - name: get-namespaces
+        description: "Get the list of namespaces"
+        cmd: |
+          NAMESPACES=$(kubectl get namespaces -o json | jq -r '.items[].metadata.name')
+          echo "Namespaces: $NAMESPACES"
+          export NAMESPACES=$NAMESPACES
+
       - name: install-app
         description: "Install the $APP_NAME app"
         cmd: |
@@ -88,20 +110,35 @@ tasks:
       - name : scan-run-dast
         description: "Run the OWASP ZAP DAST scan"
         cmd: |
-          echo "Getting the scan endpoint"
+          for package in $(ls packages); do
+            echo "Processing package $package"
+            # Call zarf-package-create task
+            echo "Creating package $package"
+            zarf package create packages/$package -o packages/$package --confirm
 
-          APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
-          
-          for APP_ENDPOINT in $APP_ENDPOINTS; do
-            echo "App endpoint: $APP_ENDPOINT"
-            if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
-              echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
-              exit 1
-            fi
-
-            SCAN_ENDPOINT="$APP_ENDPOINT"
+            # Call install-app task
+            echo "Installing the $package app"
+            uds zarf package deploy packages/$package/*.tar.zst --confirm --no-progress
+            echo "Getting the scan endpoint"
+            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.labels.["app.kubernetes.io/name"]')
+            APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
             
-            echo "$BLUE Running DAST scan $RESET"
+            for APP_ENDPOINT in $APP_ENDPOINTS; do
+              echo "App endpoint: $APP_ENDPOINT"
+              if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+                echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+                exit 1
+              fi
+
+              SCAN_ENDPOINT="$APP_ENDPOINT"
+              
+              echo "$BLUE Running DAST scan $RESET"
+
+              echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+              docker run --network="host" -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+              echo "DAST scan complete"
+            done
+          done
 
   - name: dast-scan-everything
     description: "Loop through packages, create package, install app, and run DAST scan"
@@ -142,3 +179,93 @@ tasks:
               done
             done
           done
+            
+  - name: dast-scan-zarf-yaml
+    variables:
+      - name: zarf_yaml_dir
+        description: "The directory path that contains a zarf.yaml"
+        required: true
+    actions:
+      - definition: "DAST scan a single package"
+        cmd: |
+          if [ -d "$zarf_yaml_dir" ]; then
+            echo "Processing package at $zarf_yaml_dir"
+            # Call zarf-package-create task
+            echo "Creating package at $zarf_yaml_dir"
+            zarf package create $zarf_yaml_dir -o $zarf_yaml_dir --confirm
+  
+            # Call install-app task
+            echo "Installing the app from $zarf_yaml_dir"
+            uds zarf package deploy $zarf_yaml_dir/*.tar.zst --confirm --no-progress
+  
+            # Call scan-run-dast task
+            echo "Processing package $package"
+            echo "Getting the scan endpoint"
+            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
+            APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
+            
+            for APP_ENDPOINT in $APP_ENDPOINTS; do
+              echo "App endpoint: $APP_ENDPOINT"
+              if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+                echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+                exit 1
+              fi
+
+              SCAN_ENDPOINT="$APP_ENDPOINT"
+              
+              echo "$BLUE Running DAST scan $RESET"
+
+              echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+              docker run --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+              echo "DAST scan complete"
+
+              # Free up resources by deleting the container
+              echo "Cleaning up resources"
+              docker rm -f ephem-dast
+            done
+          else
+            echo "Skipping $zarf_yaml_dir, not a directory"
+          fi
+
+  - name: dast-scan-zarf-package
+    variables:
+      - name: package
+        description: "The filepath to the zarf package to scan"
+        required: true
+    actions:
+      - definition: "DAST scan a single package"
+        cmd: |
+          if [ -f $package ]; then
+            echo "Processing package $package_name"
+  
+            # Call install-app task
+            echo "Installing the $package_name app"
+            uds zarf package deploy $package_name --confirm --no-progress
+  
+            # Call scan-run-dast task
+            echo "Getting the scan endpoint"
+            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
+            APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
+            
+            for APP_ENDPOINT in $APP_ENDPOINTS; do
+              echo "App endpoint: $APP_ENDPOINT"
+              if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+                echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+                exit 1
+              fi
+
+              SCAN_ENDPOINT="$APP_ENDPOINT"
+              
+              echo "$BLUE Running DAST scan $RESET"
+
+              echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+              docker run --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+              echo "DAST scan complete"
+
+              # Free up resources by deleting the container
+              echo "Cleaning up resources"
+              docker rm -f ephem-dast
+            done
+          else
+            echo "Skipping $package_name, not a directory"
+          fi
