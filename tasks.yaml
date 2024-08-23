@@ -24,6 +24,20 @@ includes:
   - scan: ./tasks/dast-scan.yaml
 
 tasks:
+  - name: zarf-package-create
+    description: "Create the packages in /packages"
+    actions:
+      - definition: "create all packages in /packages"
+        cmd: |
+          # loop through all the packages in the packages directory and use zarf package create
+          for package in $(ls packages); do
+            if [ -d "packages/$package" ]; then
+              echo "Creating package $package"
+              zarf package create packages/$package -o packages/$package --confirm  
+            else
+              echo "Skipping $package, not a directory"
+            fi
+          done
 
   - name: dast-scan
     description: "Can run the owasp-zap DAST scan on an app deployed into uds"
