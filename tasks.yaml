@@ -75,19 +75,10 @@ tasks:
       - definition: " build the dast image from dockerfile"
         task: setup:build-dast-container
       
-      - name: validate-uds-core
-        description: "Validate the UDS Core bundle"
-        cmd: |
-
-          echo $APP_NAME
-          if [[ $(zarf tools kubectl get pods -n uds-dev-stack --no-headers | wc -l) -eq 6 && \
-          $(zarf tools kubectl get pods -n pepr-system --no-headers | wc -l) -eq 3 ]]; then
-            echo "UDS Core is running"
-          else
-            echo "UDS Core is not running"
-            echo "Installing "
-            uds deploy k3d-core-slim-dev:0.26.0 --confirm
-          fi
+      - 
+        description: "Validate the UDS Core bundle is installed"
+        actions:
+          - task: setup:verify-uds-core
       
       - name: get-namespaces
         description: "Get the list of namespaces"
@@ -120,7 +111,8 @@ tasks:
             echo "Installing the $package app"
             uds zarf package deploy packages/$package/*.tar.zst --confirm --no-progress
             echo "Getting the scan endpoint"
-            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.labels.["app.kubernetes.io/name"]')
+            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
+            echo $APP_NAME
             APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
             
             for APP_ENDPOINT in $APP_ENDPOINTS; do
@@ -135,7 +127,7 @@ tasks:
               echo "$BLUE Running DAST scan $RESET"
 
               echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
-              docker run --network="host" -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+              docker run --network="host" -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
               echo "DAST scan complete"
             done
           done
