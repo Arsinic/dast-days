@@ -32,9 +32,11 @@ includes:
 tasks:
   - name: my-test
     actions:
+      - task: setup:verify-uds-core
+      - task:
       - task: scan:new-dast-scan
 
-  - name: scan-test
+  - name: dast-scan-any
     variables:
       - name: pkg_path
         description: "The file or directory path"
@@ -44,11 +46,31 @@ tasks:
         cmd: |
           echo "Checking if $pkg_path is a file or directory"
           if [ -f "$pkg_path" ]; then
-            echo "$pkg_path is a file"
-            # uds run scan:file-task
+            if [[ "$pkg_path" == *"zarf.yaml" ]]; then
+              echo "$pkg_path is a zarf.yaml file"
+              # set pkg_path to the directory containing the zarf.yaml file
+              pkg_path=$(realpath $(dirname $pkg_path))
+              # Add your zarf.yaml-specific logic here
+              zarf_yaml_dir="$pkg_path" uds run dast-scan-zarf-yaml
+            elif [[ "$pkg_path" == *"tar.zst" ]]; then
+              echo "$pkg_path is a tar package file"
+              # Add your file-specific logic here
+              package="$pkg_path" uds run dast-scan-zarf-package
+            else
+              echo "I don't know what to do with $pkg_path"
+            fi
           elif [ -d "$pkg_path" ]; then
             echo "$pkg_path is a directory"
-            # uds run scan:directory-task
+            echo "Looking for zarf.yaml or tar.zst files in $pkg_path"
+            if find $pkg_path -name "*.tar.zst"; then
+              echo "Processing $pkg_path"
+              package="$pkg_path" uds run dast-scan-zarf-package
+            elif find $pkg_path -name "zarf.yaml"; then
+              echo "Processing $pkg_path"
+              zarf_yaml_dir="$(realpath $pkg_path))" uds run dast-scan-zarf-yaml
+            else
+              echo "No zarf.yaml files found in $pkg_path"
+            fi
           else
             echo "$pkg_path is not a valid file or directory"
             exit 1
@@ -75,8 +97,7 @@ tasks:
       - definition: " build the dast image from dockerfile"
         task: setup:build-dast-container
       
-      - 
-        description: "Validate the UDS Core bundle is installed"
+      - description: "Validate the UDS Core bundle is installed"
         actions:
           - task: setup:verify-uds-core
       
@@ -184,18 +205,29 @@ tasks:
             echo "Processing package at $zarf_yaml_dir"
             # Call zarf-package-create task
             echo "Creating package at $zarf_yaml_dir"
-            zarf package create $zarf_yaml_dir -o $zarf_yaml_dir --confirm
+            zarf package create "$zarf_yaml_dir" -o "$zarf_yaml_dir" --confirm
   
             # Call install-app task
             echo "Installing the app from $zarf_yaml_dir"
-            uds zarf package deploy $zarf_yaml_dir/*.tar.zst --confirm --no-progress
+            
+            # Find the .tar.zst file in the directory and get its absolute path
+            zarf_package=$(find "$zarf_yaml_dir" -name "*.tar.zst" -exec realpath {} \; | head -n 1)
+
+            # Check if the file was found
+            if [ -z "$zarf_package" ]; then
+              echo "No .tar.zst file found in $zarf_yaml_dir"
+              exit 1
+            fi
+            uds zarf package deploy "$zarf_package" --confirm --no-progress
   
             # Call scan-run-dast task
             echo "Processing package $package"
             echo "Getting the scan endpoint"
-            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
+            APP_NAME=$(zarf package inspect "$zarf_package" --no-log-file --no-color 2>&1 | yq '.metadata.name')
+            echo "APP_NAME: $APP_NAME"
             APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
-            
+            echo "APP_ENDPOINTS: $APP_ENDPOINTS"
+
             for APP_ENDPOINT in $APP_ENDPOINTS; do
               echo "App endpoint: $APP_ENDPOINT"
               if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
@@ -214,6 +246,7 @@ tasks:
               # Free up resources by deleting the container
               echo "Cleaning up resources"
               docker rm -f ephem-dast
+              rm "$zarf_package"
             done
           else
             echo "Skipping $zarf_yaml_dir, not a directory"
@@ -228,15 +261,15 @@ tasks:
       - definition: "DAST scan a single package"
         cmd: |
           if [ -f $package ]; then
-            echo "Processing package $package_name"
-  
+            echo "Processing package $package"
+            APP_NAME=$(zarf package inspect ./packages/podinfo/zarf-package-podinfo-arm64-6.3.5.tar.zst --no-log-file --no-color 2>&1 | yq '.metadata.name')
+            echo "APP_NAME: $APP_NAME"
             # Call install-app task
-            echo "Installing the $package_name app"
-            uds zarf package deploy $package_name --confirm --no-progress
+            echo "Installing the $APP_NAME app"
+            uds zarf package deploy $package --confirm --no-progress
   
             # Call scan-run-dast task
             echo "Getting the scan endpoint"
-            APP_NAME=$(kubectl get packages -n $package -o json | jq -r '.items[0].metadata.name')
             APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
             
             for APP_ENDPOINT in $APP_ENDPOINTS; do
@@ -251,7 +284,7 @@ tasks:
               echo "$BLUE Running DAST scan $RESET"
 
               echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
-              docker run --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+              docker run --rm --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
               echo "DAST scan complete"
 
               # Free up resources by deleting the container
