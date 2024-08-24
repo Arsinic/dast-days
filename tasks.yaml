@@ -30,10 +30,14 @@ includes:
   - scan: ./tasks/dast-scan.yaml
 
 tasks:
-  - name: my-test
+  - name: dast-scan-zarf-package
+    variables:
+      - name: ZARF_PKG_PATH
+        description: "The filepath to the zarf package to deploy & scan"
+        required: true
     actions:
       - task: setup:verify-uds-core
-      - task:
+      - task: deploy:deploy-zarf-package
       - task: scan:new-dast-scan
 
   - name: dast-scan-any
@@ -252,7 +256,7 @@ tasks:
             echo "Skipping $zarf_yaml_dir, not a directory"
           fi
 
-  - name: dast-scan-zarf-package
+  - name: dast-scan-zarf-packagea
     variables:
       - name: package
         description: "The filepath to the zarf package to scan"

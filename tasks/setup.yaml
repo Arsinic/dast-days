@@ -5,3 +5,33 @@ tasks:
       - description: "Build the DAST container"
         cmd: |
           docker build -t ephem-dind:latest .
+
+
+  - name: create-app-package
+    description: "Create the podinfo app package"
+    actions:
+      - description: "Create the podinfo app package"
+        cmd: |
+          uds zarf package create $PATH_TO_PACKAGE --output $OUTPUT_DIR
+
+  - name: deploy-app-package
+    description: "Deploy the podinfo app package"
+    actions:
+      - description: "Deploy the podinfo app package"
+        cmd: |
+          cmd: |
+          echo "Installing podinfo app"
+          uds zarf package deploy $PACKAGE --confirm --no-progress
+
+  - name: verify-uds-core
+    description: "Validate the UDS Core bundle"
+    cmd: |
+      echo $APP_NAME
+      if [[ $(zarf tools kubectl get pods -n uds-dev-stack --no-headers | wc -l) -eq 6 && \
+      $(zarf tools kubectl get pods -n pepr-system --no-headers | wc -l) -eq 3 ]]; then
+        echo "UDS Core is running"
+      else
+        echo "UDS Core is not running"
+        echo "Installing "
+        uds deploy k3d-core-slim-dev:0.26.0 --confirm
+      fi

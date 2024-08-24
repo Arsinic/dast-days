@@ -1,0 +1,30 @@
+tasks:
+  - name: deploy-zarf-package
+    actions:
+      - task: get-ns-from-zarf-pkg
+      - task: deploy-package
+
+  - name: get-ns-from-zarf-pkg
+    description: "Get the namespace from the zarf package"
+    variables:
+    - name: ZARF_PKG_PATH
+      required: true
+    actions:
+      - cmd: uds zarf package inspect $ZARF_PKG_PATH --no-progress --no-log-file --no-color 2>&1 | yq '.metadata.name'
+        setVariables: 
+          - name: PKG_NAMESPACE
+      - cmd: |
+          echo "PKG_NAMESPACE: ${YELLOW} $PKG_NAMESPACE ${RESET}"
+
+  - name: deploy-package
+    description: "Deploy the zarf package"
+    variables:
+      - name: ZARF_PKG_PATH
+        required: true
+    actions:
+      - description: "Deploy the zarf package"
+        cmd: |
+          echo "Installing zarf package"
+          uds zarf package deploy $ZARF_PKG_PATH --confirm --no-progress
+
+          
