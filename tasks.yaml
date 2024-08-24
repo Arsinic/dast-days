@@ -17,12 +17,12 @@ variables:
     default: "\\033[0m"  # Reset color 
   # - name: APP_NAME
   #   default: $(kubectl get pods -n podinfo -o json | jq -r '.items[0].metadata.labels.["app.kubernetes.io/name"]')
-  - name: ZARF_PKG_PATH
-    default: "packages/$APP_NAME"
-  - name: ZARF_PKG_ARCH
-    default: "arm64"
-  - name: ZARF_PKG_VERSION
-    default: "6.3.5"
+  # - name: ZARF_PKG_PATH
+  #   default: "packages/$APP_NAME"
+  # - name: ZARF_PKG_ARCH
+  #   default: "arm64"
+  # - name: ZARF_PKG_VERSION
+  #   default: "6.3.5"
 
 includes:
   - setup: ./tasks/setup.yaml
@@ -31,6 +31,7 @@ includes:
 
 tasks:
   - name: dast-scan-zarf-package
+    description: "Run the OWASP ZAP DAST scan on a given zarf package --set ZARF_PKG_PATH=<path>"
     variables:
       - name: ZARF_PKG_PATH
         description: "The filepath to the zarf package to deploy & scan"

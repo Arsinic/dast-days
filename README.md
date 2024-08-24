@@ -1,6 +1,8 @@
 # dast-days
 
-Aiming to build a true local and ephemeral capability to dast scan a zarf package in uds-core with owasp zap.
+[[_TOC_]]
+
+Aiming to build a true local and ephemeral ci task capability to dast scan a zarf package in uds-core using owasp zap.
 
 Will need a uds `k3d-core-slim-dev` deployment - potentially one without keycloak for speed / simplicity.
 
@@ -9,21 +11,87 @@ Will need a uds `k3d-core-slim-dev` deployment - potentially one without keycloa
 - `docker`
 - `k3d`
 
+- a zarf package with an included manifest that exposes a service.
+  - example package.yaml manifest
+  ```
+    apiVersion: uds.dev/v1alpha1
+    kind: Package
+    metadata:
+    name: dos-games
+    namespace: dos-games
+    spec:
+    network:
+        expose:
+        - service: game
+            podLabels:
+            app: game
+            host: game
+            gateway: tenant
+            port: 8000
+
+        allow:
+        - direction: Egress
+            selector:
+            app.kubernetes.io/name: game
+            remoteGenerated: Anywhere
+            port: 443
+    ```
 
 From nothing, 
 - deploy uds-core-slim (eventually w/o keycloak)
-  -TODO build uds-ozempic (slim-dev without keycloak, auth too much for dash days dasting)
+  - TODO build uds-ozempic (slim-dev without keycloak, auth too much for dash days dasting)
 - deploy an app from a zarf package
-- run a task that uses a docker in docker based image to run the latest owasp-zap image agianst the deployed apps <app>.uds.dev end point
+- run a task that uses a docker in docker based image to run the latest owasp-zap image against the deployed apps <app>.uds.dev end point
 - collect dast scan results
 
+## Features
 
+### ZAP Scan a zarf package
+Deploy and Scan a local zarf package
+`uds run dast-scan-package --set ZARF_PKG_PATH=<path-to-pkg>`
+
+Deploy and scan a zarf package from OCI
+`uds run dast-scan-package --set ZARF_PKG_PATH=oci://<oci_path>`
+
+
+Given: a zarf yaml and the desire to dast scan the app it will deploy
+When I run: `uds run dast-scan-package --set ZARF_PKG_PATH="<path-to-pkg>"`
+Then the UDS task will:
+  - [x] verify that a uds cluster is initialized or not
+    - deploys `k3d-core-slim-dev:0.26.0` if not
+  - [ ] create my zarf package (if not an oci ref)
+  - [x] deploy the package
+  - [x] check if it exposes an end point
+  - [x] dast scan the endpont(s)
+  - [x] store dast results as html and json output `<package_name>.<app_name>.domain-report.html` and `<package_name>.<app_name>.domain-report.json`
+
+### ZAP Scan every exposed endpoint in your cluster
+If you just want to scan any know endpoint in your cluster run: 
+`uds run dast-scan-everything`
+
+Your local directory will have 2 types of formatted ZAP reports for each endpoint:
+- `html` - `${APP_ENDPOINT}.report.html`
+- `json` - `${APP_ENDPOINT}.report.json`
+
+:notepad:
+a default uds core slim dev cluster will have Keycloak exposed on 2 endpoints `keycloak.admin.uds.dev` and `keycloak.sso.uds.dev`.
+
+Given I want to dast scan any exposed endpoints on my cluster
+When I run `uds run dast-master`
+the UDS task will:
+  - verify that a uds cluster is initialized or not
+    - deploys `k3d-core-slim-dev:0.26.0` if not
+  - get list of all namespaces
+  - check for packages in all namespaces
+  - for list of packages get exposed endpoints
+  - for exposed end point DAST scan that B
+  - store dast results in `<package_name>.<app_name>.domain-report.html` and `<package_name>.<app_name>.domain-report.json`
+
+
+<details> <summary>Click to expand old notes</summary> 
 
 ## Building Docker in Docker image to zap scan in ci...
 `docker build -t ephemeral-dast .`
-
-
-
 
 ### DAST Task
 
@@ -32,8 +100,6 @@ From nothing,
 
 Get results from the dind container by mounting local volume:
 `docker run --privileged -it --rm --name ephem-dind ephem-dind:latest sleep 10 && docker run --network="host" -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev -r report.html`
-
-<details> <summary>Click to expand old notes</summary>
 
 # DAST via Docker in docker locally
 
@@ -58,29 +124,4 @@ To avoid having to run a `-d` detached image you can just sleep the dind contain
 </details>
 
 
-
-
-
-
-
-Given: a zarf yaml and the desire to dast scan the app it will deploy
-When I run: `uds run dast-scan-package --set package_path=<path-to-pkg>`
-the UDS task will:
-  - [ ] verify that a uds cluster is initialized or not
-    - deploys `k3d-core-slim-dev:0.26.0` if not
-  - [ ] create my zarf package (if not an oci ref)
-  - [ ] deploy the package
-  - [ ] check if it exposes an end point
-  - [ ] dast scan the endpont(s)
-
-
-Given I want to dast scan any exposed endpoints on my cluster
-When I run `uds run dast-master`
-the UDS task will:
-  - verify that a uds cluster is initialized or not
-    - deploys `k3d-core-slim-dev:0.26.0` if not
-  - get list of all namespaces
-  - check for packages in all namespaces
-  - for list of packages get exposed endpoints
-  - for exposed end point DAST scan that B
-  - store dast results in `<package_name>.<app_name>.domain-report.html` and `<package_name>.<app_name>.domain-report.json`
+ 
