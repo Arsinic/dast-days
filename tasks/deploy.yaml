@@ -24,7 +24,7 @@ tasks:
     actions:
       - description: "Deploy the zarf package"
         cmd: |
-          echo "Installing zarf package"
+          echo "Installing zarf package: $ZARF_PKG_PATH"
           uds zarf package deploy $ZARF_PKG_PATH --confirm --no-progress
 
           

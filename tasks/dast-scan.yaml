@@ -37,7 +37,7 @@ tasks:
       - task: get-app-name
       - task: get-app-endpoints
       - task: scan-all-the-endpoints
-      - task: dast-scan
+      - task: fail-on-highs
       
   - name: get-namespace
     variables:
@@ -97,15 +97,15 @@ tasks:
             if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
               echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
               exit 1
+            else
+              echo "${MAGENTA} App endpoint: $APP_ENDPOINT ${RESET}"
+              uds run scan:dast-scan --set APP_ENDPOINT=$APP_ENDPOINT
             fi
-            echo "${MAGENTA} App endpoint: $APP_ENDPOINT ${RESET}"
-            
-          uds run scan:dast-scan --set APP_ENDPOINT=$APP_ENDPOINT
+
           done
       - cmd: echo "$APP_ENDPOINT"
         setVariables:
           - name: APP_ENDPOINT
-
 
   - name: dast-scan
     variables: 
@@ -115,5 +115,37 @@ tasks:
     actions:
       - cmd: | 
           echo "endpoint for dast scan: $YELLOW $APP_ENDPOINT $RESET"
-          docker run --network="host" --rm --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${APP_ENDPOINT} -r $APP_ENDPOINT-report.html -J $APP_ENDPOINT-report.json && sleep 2
-          echo "DAST scan complete" &
+      - cmd: |
+          docker run --network="host" --rm --name ephem-dast \
+            -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t https://${APP_ENDPOINT} -r $APP_ENDPOINT-report.html -J $APP_ENDPOINT-report.json \
+            -w $APP_ENDPOINT-report.md && sleep 2
+          echo "DAST scan complete"
+      - cmd: ls $APP_ENDPOINT-report.md
+        set variables:
+          - name: DAST_REPORT
+
+  
+  - name: fail-on-highs
+    variables:
+      - name: DAST_REPORT
+        required: true
+    actions:
+      - cmd: cat $DAST_REPORT
+      - cmd: |
+          if grep -q "High" $DAST_REPORT; then
+            echo "High vulnerabilities found"
+            exit 1
+          else
+            echo "No high vulnerabilities found"
+          fi
+
+  - name: clean-up
+    description: "Clean up DAST scan objects"
+    variables:
+      - name: ZARF_PKG_PATH
+        required: true
+    actions:
+      - cmd: |
+          docker rm -f ephem-dast || true
+          rm "$ZARF_PKG_PATH" || true

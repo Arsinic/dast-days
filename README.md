@@ -2,7 +2,7 @@
 
 [[_TOC_]]
 
-Aiming to build a true local and ephemeral ci task capability to dast scan a zarf package in uds-core using owasp zap.
+Aiming to build a true local and ci agnostic task capability to dast scan a zarf package in uds-core utilizing owasp zap.
 
 Will need a uds `k3d-core-slim-dev` deployment - potentially one without keycloak for speed / simplicity.
 
@@ -69,12 +69,13 @@ Then the UDS task will:
 If you just want to scan any know endpoint in your cluster run: 
 `uds run dast-scan-everything`
 
-Your local directory will have 2 types of formatted ZAP reports for each endpoint:
+Your local directory will have 3 types of formatted ZAP reports for each endpoint:
 - `html` - `${APP_ENDPOINT}.report.html`
 - `json` - `${APP_ENDPOINT}.report.json`
+- `markdown` - `${APP_ENDPOINT}.report.md`
 
-:notepad:
-a default uds core slim dev cluster will have Keycloak exposed on 2 endpoints `keycloak.admin.uds.dev` and `keycloak.sso.uds.dev`.
+:info:
+A default uds core slim dev cluster will have Keycloak exposed on 2 endpoints `keycloak.admin.uds.dev` and `keycloak.sso.uds.dev`.
 
 Given I want to dast scan any exposed endpoints on my cluster
 When I run `uds run dast-master`
@@ -88,13 +89,17 @@ the UDS task will:
   - store dast results in `<package_name>.<app_name>.domain-report.html` and `<package_name>.<app_name>.domain-report.json`
 
 
-<details> <summary>Click to expand old notes</summary> 
+
+
+<details> <summary>Click to expand unfinished CI notes</summary> 
 
 ## Building Docker in Docker image to zap scan in ci...
 `docker build -t ephemeral-dast .`
 
-### DAST Task
+In a ci environment we'll want to likely use a docker in docker base image. We made a `Dockerfile` based off the `docker:dind` image so that we could have `uds` and some other tools their image doesn't include installed to run our tasks. 
 
+
+### DAST Task
 
 `docker run --privileged -it --rm --name ephem-dind ephemeral-dast:latest sleep 10 && docker run --network="host" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://podinfo.uds.dev`
 

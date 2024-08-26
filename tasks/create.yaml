@@ -1,0 +1,22 @@
+tasks:
+  - name: zarf-package-create
+    description: "Create the packages in /packages"
+    variables:
+      - name: ZARF_YAML_DIR
+        description: "The directory path that contains a zarf.yaml"
+        required: true
+    actions:
+      - definition: "create all packages in /packages"
+        cmd: |
+          zarf package create $ZARF_YAML_DIR -o $ZARF_YAML_DIR --confirm  
+
+  - name: get-zarf-package-path
+    description: "Searches for *.tar.zast in $zarf-yaml-dir"
+    variables:
+      - name: ZARF_YAML_DIR
+        required: true
+    actions:
+      - definition: "Set zarf_package to zarf package filenpath"
+        cmd: echo $(find "$ZARF_YAML_DIR" -name "*.tar.zst" -exec realpath {} \; | head -n 1)
+        setVariables:
+          - name: ZARF_PKG_PATH
