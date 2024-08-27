@@ -10,7 +10,7 @@ tasks:
     - name: ZARF_PKG_PATH
       required: true
     actions:
-      - cmd: uds zarf package inspect $ZARF_PKG_PATH --no-progress --no-log-file --no-color 2>&1 | yq '.metadata.name'
+      - cmd: uds zarf package inspect "$ZARF_PKG_PATH" --no-progress --no-log-file --no-color 2>&1 | yq '.metadata.name'
         setVariables: 
           - name: PKG_NAMESPACE
       - cmd: |
@@ -25,6 +25,6 @@ tasks:
       - description: "Deploy the zarf package"
         cmd: |
           echo "Installing zarf package: $ZARF_PKG_PATH"
-          uds zarf package deploy $ZARF_PKG_PATH --confirm --no-progress
+          uds zarf package deploy "$ZARF_PKG_PATH" --confirm --no-progress
 
           

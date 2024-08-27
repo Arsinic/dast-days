@@ -213,45 +213,45 @@ tasks:
       - task: scan:new-dast-scan
       - task: scan:clean-up
 
-  - name: dast-scan-zarf-package
-    variables:
-      - name: package
-        description: "The filepath to the zarf package to scan"
-        required: true
-    actions:
-      - definition: "DAST scan a single package"
-        cmd: |
-          if [ -f $package ]; then
-            echo "Processing package $package"
-            APP_NAME=$(zarf package inspect ./packages/podinfo/zarf-package-podinfo-arm64-6.3.5.tar.zst --no-log-file --no-color 2>&1 | yq '.metadata.name')
-            echo "APP_NAME: $APP_NAME"
-            # Call install-app task
-            echo "Installing the $APP_NAME app"
-            uds zarf package deploy $package --confirm --no-progress
+  # - name: dast-scan-zarf-package
+  #   variables:
+  #     - name: package
+  #       description: "The filepath to the zarf package to scan"
+  #       required: true
+  #   actions:
+  #     - definition: "DAST scan a single package"
+  #       cmd: |
+  #         if [ -f $package ]; then
+  #           echo "Processing package $package"
+  #           APP_NAME=$(zarf package inspect ./packages/podinfo/zarf-package-podinfo-arm64-6.3.5.tar.zst --no-log-file --no-color 2>&1 | yq '.metadata.name')
+  #           echo "APP_NAME: $APP_NAME"
+  #           # Call install-app task
+  #           echo "Installing the $APP_NAME app"
+  #           uds zarf package deploy $package --confirm --no-progress
   
-            # Call scan-run-dast task
-            echo "Getting the scan endpoint"
-            APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
+  #           # Call scan-run-dast task
+  #           echo "Getting the scan endpoint"
+  #           APP_ENDPOINTS=$(kubectl get packages -n $APP_NAME -o json | jq -r '.items[0].status.endpoints[]') 
             
-            for APP_ENDPOINT in $APP_ENDPOINTS; do
-              echo "App endpoint: $APP_ENDPOINT"
-              if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
-                echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
-                exit 1
-              fi
+  #           for APP_ENDPOINT in $APP_ENDPOINTS; do
+  #             echo "App endpoint: $APP_ENDPOINT"
+  #             if [[ (-z "$APP_ENDPOINT") || ($APP_ENDPOINT == "null")]]; then
+  #               echo "No app subdomain found \n Does your zarf package have a defined package CR with an endpoint?"
+  #               exit 1
+  #             fi
 
-              SCAN_ENDPOINT="$APP_ENDPOINT"
+  #             SCAN_ENDPOINT="$APP_ENDPOINT"
               
-              echo "$BLUE Running DAST scan $RESET"
+  #             echo "$BLUE Running DAST scan $RESET"
 
-              echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
-              docker run --rm --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
-              echo "DAST scan complete"
+  #             echo "endpoint for dast scan: $YELLOW $SCAN_ENDPOINT $RESET"
+  #             docker run --rm --network="host" --name ephem-dast -v "$(pwd):/zap/wrk" -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://${SCAN_ENDPOINT} -r $package.$APP_ENDPOINT.report.html -J $package.$APP_ENDPOINT.report.json && sleep 2
+  #             echo "DAST scan complete"
 
-              # Free up resources by deleting the container
-              echo "Cleaning up resources"
-              docker rm -f ephem-dast
-            done
-          else
-            echo "Skipping $package_name, not a directory"
-          fi
+  #             # Free up resources by deleting the container
+  #             echo "Cleaning up resources"
+  #             docker rm -f ephem-dast
+  #           done
+  #         else
+  #           echo "Skipping $package_name, not a directory"
+  #         fi
