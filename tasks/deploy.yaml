@@ -10,7 +10,7 @@ tasks:
     - name: ZARF_PKG_PATH
       required: true
     actions:
-      - cmd: uds zarf package inspect "$ZARF_PKG_PATH" --no-progress --no-log-file --no-color 2>&1 | yq '.metadata.name'
+      - cmd: echo $(uds zarf package inspect "$ZARF_PKG_PATH" --no-progress --no-log-file --no-color 2>&1 | yq '.metadata.name')
         setVariables: 
           - name: PKG_NAMESPACE
       - cmd: |
